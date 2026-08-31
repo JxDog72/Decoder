@@ -1,7 +1,7 @@
 """
 Flexible number-list parsing for ASCII / decimal / hex / binary inputs.
 
-Accepts common list shapes people paste from scripts, CTF writeups, and notes:
+Accepts common list shapes people paste from scripts and notes:
   [72, 84, 66, 123]
   72 84 66 123
   72,84,66,123

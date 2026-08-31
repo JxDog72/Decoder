@@ -1,6 +1,8 @@
 # Decoder
 
-Local desktop encode / decode / hash toolkit. Nothing is uploaded. No account.
+Local desktop app: encode and decode text, try common ciphers, and check hashes. Nothing is uploaded. No account.
+
+![Decoder main window](screenshots/mainView.png)
 
 **Windows 10/11 and Linux.** License: [MIT](LICENSE).
 
@@ -14,7 +16,7 @@ Python 3.10+ on PATH.
 Run-Decoder.bat
 ```
 
-That installs `customtkinter` if needed, then starts the GUI (no leftover console window).
+That installs what it needs, then starts the window (no leftover console).
 
 Or:
 
@@ -41,44 +43,44 @@ Or: `python3 -m pip install -r requirements.txt && python3 app.py`
 
 | Tab | What it does |
 |-----|----------------|
-| **ASCII Lists** | Number lists ↔ text (brackets, commas, `0x`, `\x`, Python assignments) |
+| **ASCII Lists** | Number lists ↔ text (brackets, commas, hex, Python-style lists) |
 | **Base / Encodings** | Base64, URL-safe Base64, Base32, Base85, Ascii85 |
-| **Hex / Binary** | Text ↔ hex (spaced/compact) ↔ binary |
-| **URL / HTML** | Percent-encoding and HTML entities |
+| **Hex / Binary** | Text ↔ hex ↔ binary |
+| **URL / HTML** | URL encoding and HTML entities |
 | **Ciphers** | ROT/Caesar, ROT47, Atbash, reverse, Morse, A1Z26 |
-| **Crypto** | Vigenère, XOR (text/hex key), Rail Fence |
-| **Hash Check** | Paste a hash + candidate text, or verify a downloaded file |
-| **Unicode** | Code points and byte summary |
-| **Try All** | One paste → many decoders at once |
+| **Crypto** | Vigenère, XOR, Rail Fence (puzzles / learning only) |
+| **Hash Check** | Paste a hash and a candidate string, or check a downloaded file |
+| **Unicode** | Code points and a short byte summary |
+| **Try All** | One paste, several decoders at once |
 
-Every text pane has **Paste / Copy / Clear**, plus a right-click menu.
+Every text box has **Paste / Copy / Clear**, plus a right-click menu.
 
 ---
 
 ## Hash checker
 
-This does **not** reverse a hash into unknown plaintext. It tells you whether a candidate string (or a file) produces that digest.
+This does **not** turn a hash back into unknown text. It only tells you whether a candidate string (or a file) matches that hash.
 
 ### Text
 
-1. Paste the hex digest on the left (or a `sha256sum` line, or `SHA256: …`).
-2. Paste the candidate plaintext on the right.
-3. **Verify hash** (`auto` picks the algorithm from digest length).
+1. Paste the hash on the left (hex is fine, or `SHA256: …`).
+2. Paste the candidate text on the right.
+3. **Verify hash** (`auto` picks the type from the hash length).
 
 If you paste them in the wrong boxes, Verify still figures it out.
 
-**Hash candidate** writes the digest of the right-hand text into the hash box. **Hash all algos** lists MD5, SHA-1/2/3, and BLAKE2.
+**Hash candidate** writes the hash of the right-hand text into the left box. **Hash all algos** lists MD5, SHA-1/2/3, and BLAKE2.
 
 ### Downloaded file
 
 1. Source = **File** → **Browse file…**
-2. Paste the publisher’s checksum
+2. Paste the published checksum
 3. **Verify hash**
 
-Files are stream-hashed (1 MB chunks). Green **MATCH** / red **NO MATCH**.
+Large files are read in chunks so they do not need to fit in RAM. Green **MATCH** / red **NO MATCH**.
 
 ---
 
 ## Crypto notes
 
-Vigenère, XOR, and Rail Fence are for puzzles and learning — not a substitute for modern encryption.
+Vigenère, XOR, and Rail Fence are for puzzles and learning — not a stand-in for real encryption.

@@ -32,7 +32,7 @@ def font_ui(size: int = 12, weight: str = "normal") -> ctk.CTkFont:
 def font_mono(size: int = 13, weight: str = "normal") -> ctk.CTkFont:
     return ctk.CTkFont(family=_MONO_FAMILY, size=size, weight=weight)
 
-# ── Theme: “enigma lab” — deep slate + cyan phosphor accent ──────────
+# ── Theme: dark slate + teal accent ──────────────────────────────────
 COLORS = {
     "bg": "#0c1118",
     "panel": "#121a24",
@@ -682,8 +682,8 @@ class CryptoTab(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text=(
-                "Key-based crypto: Vigenère, XOR (text/hex key), Rail Fence. "
-                "Not a substitute for modern ciphers — great for CTF & learning."
+                "Keyed ciphers: Vigenère, XOR (text or hex key), Rail Fence. "
+                "Fine for puzzles and learning — not for real secrets."
             ),
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
@@ -947,9 +947,9 @@ class HashCheckTab(ctk.CTkFrame):
             self,
             text=(
                 "Paste a hash on the left and a candidate string on the right, then Verify. "
-                "Works the other way around too (plain text → digest). "
-                "File mode stream-hashes downloads so large installers do not need to fit in RAM. "
-                "Use Paste or right-click if Ctrl+V is flaky."
+                "You can also hash the text on the right. "
+                "File mode can check a download without loading the whole file into memory. "
+                "Use Paste or right-click if Ctrl+V does not stick."
             ),
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
@@ -1328,7 +1328,7 @@ class HashCheckTab(ctk.CTkFrame):
 
 
 class MultiTab(ctk.CTkFrame):
-    """Run several common decoders at once for quick CTF triage."""
+    """Run several common decoders at once."""
 
     def __init__(self, master, status: StatusBar, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
@@ -1337,8 +1337,8 @@ class MultiTab(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text=(
-                "Paste unknown data once — try Base64, Hex, Binary, URL, ASCII list, "
-                "and ROT13 in parallel."
+                "Paste unknown data once — try Base64, hex, binary, URL, ASCII lists, "
+                "and ROT13 at the same time."
             ),
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
@@ -1418,7 +1418,7 @@ class MultiTab(ctk.CTkFrame):
 class DecoderApp(ctk.CTk):
     def __init__(self):
         super().__init__()
-        self.title("Decoder — Enigma Lab")
+        self.title("Decoder")
         self.geometry("1100x720")
         self.minsize(900, 600)
         self.configure(fg_color=COLORS["bg"])
@@ -1450,13 +1450,6 @@ class DecoderApp(ctk.CTk):
             font=font_ui(size=11),
             anchor="w",
         ).pack(anchor="w")
-
-        ctk.CTkLabel(
-            header,
-            text="enigma lab",
-            text_color=COLORS["accent2"],
-            font=font_mono(size=12),
-        ).pack(side="right", padx=20)
 
         # Status
         self.status = StatusBar(self)
@@ -1592,7 +1585,7 @@ class DecoderApp(ctk.CTk):
                 if kind.startswith("URL")
                 else Converters.html_decode(t)
             ),
-            sample_left="hello world & CTF? x=1",
+            sample_left="hello world & more? x=1",
             extra_controls=lambda row: {
                 "kind": row.add_option(
                     "Type",
@@ -1610,7 +1603,7 @@ class DecoderApp(ctk.CTk):
         MultiTab(tab_multi, self.status).pack(fill="both", expand=True, padx=4, pady=4)
 
         self.protocol("WM_DELETE_WINDOW", self.destroy)
-        self.status.set("Ready — Enigma Lab loaded", ok=True, fmt="brackets")
+        self.status.set("Ready", ok=True)
 
 
 def main() -> None:
