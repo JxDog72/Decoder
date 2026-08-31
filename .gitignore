@@ -6,3 +6,6 @@ env/
 .DS_Store
 Thumbs.db
 *.log
+
+# Promo shots live on the `screenshots` branch for the GitHub README only.
+/screenshots/

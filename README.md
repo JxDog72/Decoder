@@ -2,7 +2,7 @@
 
 Local desktop app: encode and decode text, try common ciphers, and check hashes. Nothing is uploaded. No account.
 
-![Decoder main window](screenshots/mainView.png)
+![Decoder main window](https://raw.githubusercontent.com/JxDog72/Decoder/screenshots/mainView.png)
 
 **Windows 10/11 and Linux.** License: [MIT](LICENSE).
 
