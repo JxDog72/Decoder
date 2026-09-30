@@ -58,7 +58,9 @@ Or: `python3 -m pip install -r requirements.txt && python3 app.py`
 
 ## Decode a cipher you already recognize
 
-On **Ciphers**, set **Direction** to **Decode**, set **ROT** to the shift you know (8, 13, …), and set **Read from** to **Input** or **Output** — whichever box holds the ciphertext. **Apply ROT** writes the plaintext into the other box. **All shifts** lists ROT 1 through 25 when you do not know the number.
+On **Ciphers**, **Encode** moves letters forward by the ROT number. **Decode** moves them backward by that same number. Backward 23 is the same alphabet move as forward 3, because 26 − 23 = 3.
+
+`WHVWLQJ HQLJPD` spells `TESTING ENIGMA` with **Encode 23**, or with **Decode 3**. That ciphertext was made by shifting `TESTING ENIGMA` forward 3, so **Decode 23** walks the other direction and will not spell the phrase. The status line names the matching shift. **Read from** chooses the input box or the output box. **All shifts** lists every amount when you do not know the number.
 
 Atbash, ROT47, and reverse are the same operation both ways. Morse and A1Z26 follow the Encode / Decode switch.
 

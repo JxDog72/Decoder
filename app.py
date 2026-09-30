@@ -251,8 +251,70 @@ class TextPane(ctk.CTkFrame):
 
 
 class ActionRow(ctk.CTkFrame):
+    """Button row that wraps onto extra lines when the window is narrow."""
+
     def __init__(self, master, **kwargs):
-        super().__init__(master, fg_color="transparent", **kwargs)
+        super().__init__(master, fg_color="transparent", height=40, **kwargs)
+        self.pack_propagate(False)
+        self._items: list[tk.Misc] = []
+        self._gap = 8
+        self._row_gap = 6
+        self._laid_w = -1
+        self._laid_h = -1
+        self._reflowing = False
+        self.bind("<Configure>", self._on_configure)
+
+    def _track(self, widget: tk.Misc) -> tk.Misc:
+        self._items.append(widget)
+        self.after_idle(self._reflow)
+        return widget
+
+    def adopt(self, widget: tk.Misc) -> tk.Misc:
+        """Include a widget that was created separately in the wrapping row."""
+        return self._track(widget)
+
+    def _on_configure(self, event) -> None:
+        # CTkFrame sends Configure from its inner canvas, not from this frame.
+        if self._reflowing:
+            return
+        width = int(getattr(event, "width", 0) or 0)
+        if width < 40 or width == self._laid_w:
+            return
+        self._reflow()
+
+    def _reflow(self) -> None:
+        if self._reflowing:
+            return
+        width = self.winfo_width()
+        if width < 40 or not self._items:
+            return
+        self._reflowing = True
+        try:
+            self.update_idletasks()
+            usable = max(width - 4, 40)
+            x = 0
+            y = 0
+            row_h = 0
+            spots: list[tuple[tk.Misc, int, int]] = []
+            for widget in self._items:
+                req_w = max(widget.winfo_reqwidth(), 1)
+                req_h = max(widget.winfo_reqheight(), 1)
+                if x > 0 and x + req_w > usable:
+                    x = 0
+                    y += row_h + self._row_gap
+                    row_h = 0
+                spots.append((widget, x, y))
+                x += req_w + self._gap
+                row_h = max(row_h, req_h)
+            total_h = max(y + row_h, 1)
+            for widget, px, py in spots:
+                widget.place(x=px, y=py)
+            if width != self._laid_w or total_h != self._laid_h:
+                self._laid_w = width
+                self._laid_h = total_h
+                self.configure(height=total_h)
+        finally:
+            self._reflowing = False
 
     def add_btn(self, text: str, command, *, primary: bool = False) -> ctk.CTkButton:
         btn = ctk.CTkButton(
@@ -266,12 +328,11 @@ class ActionRow(ctk.CTkFrame):
             text_color="#0a1018" if primary else COLORS["text"],
             command=command,
         )
-        btn.pack(side="left", padx=(0, 8))
+        self._track(btn)
         return btn
 
     def add_option(self, label: str, values: list[str], default: str, width: int = 120):
         wrap = ctk.CTkFrame(self, fg_color="transparent")
-        wrap.pack(side="left", padx=(0, 12))
         ctk.CTkLabel(
             wrap,
             text=label,
@@ -292,7 +353,22 @@ class ActionRow(ctk.CTkFrame):
             font=ctk.CTkFont(size=12),
         )
         menu.pack(side="left")
+        self._track(wrap)
         return var
+
+    def add_check(self, text: str, variable, command=None) -> ctk.CTkCheckBox:
+        box = ctk.CTkCheckBox(
+            self,
+            text=text,
+            variable=variable,
+            text_color=COLORS["muted"],
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_dim"],
+            font=ctk.CTkFont(size=12),
+            command=command,
+        )
+        self._track(box)
+        return box
 
 
 # ══════════════════════════════════════════════════════════════════════
@@ -379,16 +455,7 @@ class AsciiTab(ctk.CTkFrame):
         controls.add_btn("Load sample", self.load_sample)
 
         self.live = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(
-            controls,
-            text="Live decode",
-            variable=self.live,
-            text_color=COLORS["muted"],
-            fg_color=COLORS["accent"],
-            hover_color=COLORS["accent_dim"],
-            font=ctk.CTkFont(size=12),
-            command=self._on_live_toggle,
-        ).pack(side="left", padx=(12, 0))
+        controls.add_check("Live decode", self.live, command=self._on_live_toggle)
 
         self.input_pane.bind_change(self._maybe_live)
         self.decode()
@@ -519,15 +586,7 @@ class BidirectionalTab(ctk.CTkFrame):
         controls.add_btn("Swap", self.swap)
 
         self.live = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(
-            controls,
-            text="Live",
-            variable=self.live,
-            text_color=COLORS["muted"],
-            fg_color=COLORS["accent"],
-            hover_color=COLORS["accent_dim"],
-            font=ctk.CTkFont(size=12),
-        ).pack(side="left", padx=(12, 0))
+        controls.add_check("Live", self.live)
 
         self.left_pane.bind_change(self._maybe_live)
         if sample_left:
@@ -592,8 +651,9 @@ class CiphersTab(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text=(
-                "Pick Encode or Decode, then where the text sits (input or output). "
-                "ROT 8 decode of the input pmttw is hello. "
+                "Encode shifts letters forward. Decode shifts that many places backward. "
+                "Backward 23 is the same letters as forward 3 (26 − 23). "
+                "WHVWLQJ HQLJPD becomes TESTING ENIGMA with Encode 23, or with Decode 3. "
                 "Atbash, ROT47, and reverse are the same both ways."
             ),
             text_color=COLORS["muted"],
@@ -694,7 +754,7 @@ class CiphersTab(ctk.CTkFrame):
             return self.out_pane, self.in_pane, "output"
         return self.in_pane, self.out_pane, "input"
 
-    def _run(self, name: str, forward, inverse=None) -> None:
+    def _run(self, name: str, forward, inverse=None, hint: str = "") -> None:
         src, dst, side = self._ends()
         decoding = self.dir_var.get() == "Decode"
         try:
@@ -707,15 +767,24 @@ class CiphersTab(ctk.CTkFrame):
             return
         dst.set(result)
         verb = "Decoded" if decoding else "Encoded"
-        hint = " · same operation both ways" if inverse is None else ""
-        self.status.set(f"{verb} {name} from the {side}{hint}", ok=True)
+        if not hint and inverse is None:
+            hint = "same operation both ways"
+        extra = f" · {hint}" if hint else ""
+        self.status.set(f"{verb} {name} from the {side}{extra}", ok=True)
 
     def do_rot(self) -> None:
         n = int(self.rot_var.get())
+        other = (26 - n) % 26
+        decoding = self.dir_var.get() == "Decode"
+        if decoding:
+            hint = f"backward {n}, same letters as Encode {other}"
+        else:
+            hint = f"forward {n}. Decode {n} undoes it (same letters as Encode {other})"
         self._run(
             f"ROT{n}",
             lambda text: Converters.rot_n(text, n),
             lambda text: Converters.rot_n(text, -n),
+            hint=hint,
         )
 
     def brute_rot(self) -> None:
@@ -910,25 +979,29 @@ class CryptoTab(ctk.CTkFrame):
         row.add_btn("Decrypt", self.decrypt)
         row.add_btn("Swap", self.swap)
 
-        ctk.CTkLabel(
-            row,
-            text="Ciphertext in",
-            text_color=COLORS["muted"],
-            font=ctk.CTkFont(size=12, weight="bold"),
-        ).pack(side="left", padx=(8, 8))
+        row.adopt(
+            ctk.CTkLabel(
+                row,
+                text="Ciphertext in",
+                text_color=COLORS["muted"],
+                font=ctk.CTkFont(size=12, weight="bold"),
+            )
+        )
         self.cipher_from = ctk.StringVar(value="Input")
-        ctk.CTkSegmentedButton(
-            row,
-            values=["Input", "Output"],
-            variable=self.cipher_from,
-            fg_color=COLORS["btn"],
-            selected_color=COLORS["accent_dim"],
-            selected_hover_color=COLORS["accent"],
-            unselected_color=COLORS["btn"],
-            unselected_hover_color=COLORS["btn_hover"],
-            text_color=COLORS["text"],
-            font=ctk.CTkFont(size=12),
-        ).pack(side="left")
+        row.adopt(
+            ctk.CTkSegmentedButton(
+                row,
+                values=["Input", "Output"],
+                variable=self.cipher_from,
+                fg_color=COLORS["btn"],
+                selected_color=COLORS["accent_dim"],
+                selected_hover_color=COLORS["accent"],
+                unselected_color=COLORS["btn"],
+                unselected_hover_color=COLORS["btn_hover"],
+                text_color=COLORS["text"],
+                font=ctk.CTkFont(size=12),
+            )
+        )
 
         self._sync_options()
 
@@ -1206,16 +1279,11 @@ class HashCheckTab(ctk.CTkFrame):
         row.add_btn("Swap fields", self.swap_fields)
 
         self.live = ctk.BooleanVar(value=True)
-        ctk.CTkCheckBox(
-            row,
-            text="Live verify",
-            variable=self.live,
-            text_color=COLORS["muted"],
-            fg_color=COLORS["accent"],
-            hover_color=COLORS["accent_dim"],
-            font=ctk.CTkFont(size=12),
+        row.add_check(
+            "Live verify",
+            self.live,
             command=lambda: self.verify() if self.live.get() else None,
-        ).pack(side="left", padx=(12, 0))
+        )
 
         self.result_pane = TextPane(self, "Result / digests", height=180)
         self.result_pane.pack(fill="both", expand=True, pady=(10, 0))
@@ -1634,7 +1702,6 @@ class DecoderApp(ctk.CTk):
         except Exception:
             pass
 
-        # Header
         header = ctk.CTkFrame(self, fg_color=COLORS["panel"], height=64, corner_radius=0)
         header.pack(fill="x")
         header.pack_propagate(False)
