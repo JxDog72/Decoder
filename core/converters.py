@@ -10,6 +10,93 @@ import urllib.parse
 from typing import Iterable
 
 
+def parse_hex_bytes(text: str) -> bytes:
+    """Turn common hex spellings into bytes.
+
+    Accepts spaced hex, compact hex, ``0x`` prefixes, ``\\xNN`` escapes,
+    colon-separated bytes, and a pasted hex dump (address column ignored).
+    An odd nibble count raises instead of padding a byte onto the front.
+    """
+    if text is None:
+        return b""
+    raw = text.strip()
+    if not raw:
+        return b""
+
+    if re.search(r"\\x[0-9a-fA-F]{2}", raw):
+        parts = re.findall(r"\\x([0-9a-fA-F]{2})", raw)
+        if parts:
+            return bytes(int(p, 16) for p in parts)
+
+    dumped = _parse_hexdump(raw)
+    if dumped is not None:
+        return dumped
+
+    # Drop 0x prefixes first so the leading 0 is not kept as a hex digit.
+    stripped = re.sub(r"0[xX](?=[0-9a-fA-F])", "", raw)
+    cleaned = re.sub(r"[^0-9a-fA-F]", "", stripped)
+    if not cleaned:
+        raise ValueError("No hex digits found")
+    if len(cleaned) % 2:
+        raise ValueError(
+            f"Odd number of hex digits ({len(cleaned)}). "
+            "Nothing was padded, so an extra byte was not added."
+        )
+    return bytes.fromhex(cleaned)
+
+
+def _parse_hexdump(text: str) -> bytes | None:
+    """Parse xxd / hexdump lines. Returns None when the text is not a dump."""
+    lines = [ln for ln in text.splitlines() if ln.strip()]
+    if not lines:
+        return None
+    row_re = re.compile(
+        r"^\s*[0-9a-fA-F]{4,16}\s*[:|]\s+"
+        r"((?:[0-9a-fA-F]{2}\s+){1,24}[0-9a-fA-F]{2})\s*$"
+    )
+    # xxd also uses "offset  bytes" with no colon, but then the offset is 8 digits
+    # followed by two spaces so it is not a normal spaced-hex string.
+    xxd_re = re.compile(
+        r"^\s*[0-9a-fA-F]{4,16}\s{2,}"
+        r"((?:[0-9a-fA-F]{2}\s+){1,24}[0-9a-fA-F]{2})\s*$"
+    )
+    rows: list[int] = []
+    for line in lines:
+        core = line.split("|", 1)[0].rstrip()
+        match = row_re.match(core) or xxd_re.match(core)
+        if not match:
+            return None
+        rows.extend(int(byte, 16) for byte in match.group(1).split())
+    return bytes(rows)
+
+
+def parse_binary_bytes(text: str) -> bytes:
+    """Turn binary text into bytes without padding an extra leading byte.
+
+    Space-separated groups of 1–8 bits are each one byte (7-bit ASCII works).
+    A continuous bit string must already be a whole number of bytes.
+    """
+    if text is None:
+        return b""
+    raw = text.strip()
+    if not raw:
+        return b""
+    raw = re.sub(r"0[bB](?=[01])", "", raw)
+    groups = re.findall(r"[01]+", raw)
+    if not groups:
+        raise ValueError("No binary digits found")
+    if all(1 <= len(group) <= 8 for group in groups):
+        return bytes(int(group, 2) for group in groups)
+    bits = "".join(groups)
+    if len(bits) % 8:
+        raise ValueError(
+            f"Binary is {len(bits)} bits, not a whole number of bytes. "
+            "Separate each byte with spaces, or add the missing bits. "
+            "Nothing was padded."
+        )
+    return bytes(int(bits[i : i + 8], 2) for i in range(0, len(bits), 8))
+
+
 MORSE_TABLE = {
     "A": ".-",
     "B": "-...",
@@ -71,16 +158,38 @@ MORSE_REVERSE = {v: k for k, v in MORSE_TABLE.items()}
 
 
 class Converters:
+    # Set by the latest conversion when a quiet choice was made (BOM, latin-1
+    # fallback, a value outside 0–255). The GUI shows it in the status bar.
+    last_note: str | None = None
+
     # ── ASCII / numbers ──────────────────────────────────────────────
 
     @staticmethod
     def numbers_to_text(nums: Iterable[int], *, encoding: str = "latin-1") -> str:
-        data = bytes(n & 0xFF for n in nums)
-        return data.decode(encoding, errors="replace")
+        values = list(nums)
+        Converters.last_note = None
+        if values and all(0 <= n <= 0x10FFFF for n in values) and any(n > 255 for n in values):
+            Converters.last_note = "values above 255 were read as Unicode code points"
+            return "".join(chr(n) for n in values)
+        wrapped = [n for n in values if n < 0 or n > 255]
+        raw = bytes(n & 0xFF for n in values)
+        text, note = Converters.bytes_to_text(raw, encoding)
+        if wrapped:
+            extra = "values outside 0–255 were wrapped to their low byte"
+            note = f"{extra}; {note}" if note else extra
+        Converters.last_note = note
+        return text
 
     @staticmethod
     def text_to_numbers(text: str, *, encoding: str = "utf-8") -> list[int]:
-        return list(text.encode(encoding, errors="replace"))
+        Converters.last_note = None
+        try:
+            return list(text.encode(encoding))
+        except UnicodeEncodeError:
+            Converters.last_note = (
+                f"some characters do not fit {encoding} and were replaced"
+            )
+            return list(text.encode(encoding, errors="replace"))
 
     @staticmethod
     def format_numbers(
@@ -116,37 +225,87 @@ class Converters:
 
     @staticmethod
     def text_to_hex(text: str, *, sep: str = " ", encoding: str = "utf-8") -> str:
-        raw = text.encode(encoding, errors="replace")
+        Converters.last_note = None
+        raw = Converters._encode_text(text, encoding)
         if sep == "":
             return raw.hex()
         return sep.join(f"{b:02x}" for b in raw)
 
     @staticmethod
     def hex_to_text(hex_str: str, *, encoding: str = "utf-8") -> str:
-        cleaned = re.sub(r"[^0-9a-fA-F]", "", hex_str)
-        if len(cleaned) % 2:
-            cleaned = "0" + cleaned
-        raw = bytes.fromhex(cleaned)
-        return raw.decode(encoding, errors="replace")
+        raw = parse_hex_bytes(hex_str)
+        text, note = Converters.bytes_to_text(raw, encoding)
+        Converters.last_note = note
+        return text
 
     # ── Binary ───────────────────────────────────────────────────────
 
     @staticmethod
     def text_to_binary(text: str, *, encoding: str = "utf-8", group: bool = True) -> str:
-        raw = text.encode(encoding, errors="replace")
+        Converters.last_note = None
+        raw = Converters._encode_text(text, encoding)
         bits = [f"{b:08b}" for b in raw]
         return " ".join(bits) if group else "".join(bits)
 
     @staticmethod
     def binary_to_text(bin_str: str, *, encoding: str = "utf-8") -> str:
-        cleaned = re.sub(r"[^01]", "", bin_str)
-        if not cleaned:
-            return ""
-        # pad left to multiple of 8
-        if len(cleaned) % 8:
-            cleaned = cleaned.zfill(len(cleaned) + (8 - len(cleaned) % 8))
-        raw = bytes(int(cleaned[i : i + 8], 2) for i in range(0, len(cleaned), 8))
-        return raw.decode(encoding, errors="replace")
+        raw = parse_binary_bytes(bin_str)
+        text, note = Converters.bytes_to_text(raw, encoding)
+        Converters.last_note = note
+        return text
+
+    @staticmethod
+    def _encode_text(text: str, encoding: str) -> bytes:
+        try:
+            return text.encode(encoding)
+        except UnicodeEncodeError:
+            Converters.last_note = (
+                f"some characters do not fit {encoding} and were replaced"
+            )
+            return text.encode(encoding, errors="replace")
+
+    @staticmethod
+    def bytes_to_text(raw: bytes, encoding: str = "utf-8") -> tuple[str, str | None]:
+        """Decode bytes without inserting U+FFFD for invalid UTF-8.
+
+        Invalid UTF-8 is shown as latin-1 so every input byte stays one
+        character. A leading UTF-8 BOM is removed and reported.
+        """
+        enc = (encoding or "utf-8").lower().replace("_", "-")
+        if enc in ("latin-1", "latin1", "iso-8859-1", "byte", "bytes"):
+            return raw.decode("latin-1"), Converters._byte_notes(raw.decode("latin-1"))
+        if enc == "ascii":
+            try:
+                text = raw.decode("ascii")
+            except UnicodeDecodeError:
+                text = raw.decode("latin-1")
+                return text, "not pure ASCII; each byte was kept as latin-1"
+            return text, Converters._byte_notes(text)
+        if raw.startswith(b"\xef\xbb\xbf"):
+            try:
+                text = raw.decode("utf-8-sig")
+            except UnicodeDecodeError:
+                text = raw.decode("latin-1")
+                return text, "invalid UTF-8, so each byte was kept as latin-1"
+            note = Converters._byte_notes(text)
+            bom = "stripped a leading UTF-8 BOM"
+            return text, f"{bom}; {note}" if note else bom
+        try:
+            text = raw.decode("utf-8")
+        except UnicodeDecodeError:
+            text = raw.decode("latin-1")
+            note = "invalid UTF-8, so each byte was kept as latin-1"
+            extra = Converters._byte_notes(text)
+            return text, f"{note}; {extra}" if extra else note
+        return text, Converters._byte_notes(text)
+
+    @staticmethod
+    def _byte_notes(text: str) -> str | None:
+        notes: list[str] = []
+        nuls = text.count("\x00")
+        if nuls:
+            notes.append(f"{nuls} NUL byte{'s' if nuls != 1 else ''} kept")
+        return "; ".join(notes) if notes else None
 
     # ── Base64 / Base32 / Base85 ─────────────────────────────────────
 
@@ -164,7 +323,9 @@ class Converters:
         s = s + ("=" * pad)
         dec = base64.urlsafe_b64decode if urlsafe else base64.b64decode
         raw = dec(s, validate=False)
-        return raw.decode(encoding, errors="replace")
+        text, note = Converters.bytes_to_text(raw, encoding)
+        Converters.last_note = note
+        return text
 
     @staticmethod
     def b32_encode(text: str, *, encoding: str = "utf-8") -> str:
@@ -175,7 +336,9 @@ class Converters:
         s = re.sub(r"\s+", "", text).upper()
         pad = (-len(s)) % 8
         s = s + ("=" * pad)
-        return base64.b32decode(s).decode(encoding, errors="replace")
+        text, note = Converters.bytes_to_text(base64.b32decode(s), encoding)
+        Converters.last_note = note
+        return text
 
     @staticmethod
     def b85_encode(text: str, *, encoding: str = "utf-8") -> str:
@@ -184,7 +347,9 @@ class Converters:
     @staticmethod
     def b85_decode(text: str, *, encoding: str = "utf-8") -> str:
         s = re.sub(r"\s+", "", text)
-        return base64.b85decode(s).decode(encoding, errors="replace")
+        text, note = Converters.bytes_to_text(base64.b85decode(s), encoding)
+        Converters.last_note = note
+        return text
 
     @staticmethod
     def a85_encode(text: str, *, encoding: str = "utf-8") -> str:
@@ -193,7 +358,9 @@ class Converters:
     @staticmethod
     def a85_decode(text: str, *, encoding: str = "utf-8") -> str:
         s = re.sub(r"\s+", "", text)
-        return base64.a85decode(s).decode(encoding, errors="replace")
+        text, note = Converters.bytes_to_text(base64.a85decode(s), encoding)
+        Converters.last_note = note
+        return text
 
     # ── URL ──────────────────────────────────────────────────────────
 
@@ -292,12 +459,9 @@ class Converters:
             raise ValueError("XOR needs a key")
         data = text.encode("utf-8", errors="replace")
         if key_is_hex:
-            cleaned = re.sub(r"[^0-9a-fA-F]", "", key)
-            if len(cleaned) % 2:
-                cleaned = "0" + cleaned
-            if not cleaned:
+            kbytes = parse_hex_bytes(key)
+            if not kbytes:
                 raise ValueError("XOR hex key is empty")
-            kbytes = bytes.fromhex(cleaned)
         else:
             kbytes = key.encode("utf-8", errors="replace")
         if not kbytes:
@@ -319,10 +483,7 @@ class Converters:
     ) -> str:
         """Decrypt XOR payload that was stored as text, hex, or base64."""
         if input_fmt == "hex":
-            cleaned = re.sub(r"[^0-9a-fA-F]", "", data)
-            if len(cleaned) % 2:
-                cleaned = "0" + cleaned
-            raw = bytes.fromhex(cleaned) if cleaned else b""
+            raw = parse_hex_bytes(data)
             # feed as latin-1 so xor_crypt byte-ops work
             text = raw.decode("latin-1")
         elif input_fmt == "base64":

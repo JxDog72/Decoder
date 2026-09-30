@@ -18,6 +18,8 @@ from __future__ import annotations
 import re
 from typing import Literal
 
+from .converters import _parse_hexdump
+
 NumberBase = Literal["auto", "dec", "hex", "bin", "oct"]
 
 
@@ -70,50 +72,69 @@ def detect_list_format(text: str) -> str:
     return "single value / other"
 
 
-def _tokenize(chunk: str, preferred: NumberBase) -> int | None:
+def _split_wide(digits: str, base: int, width: int) -> list[int] | None:
+    """Split a long digit string into fixed-width values.
+
+    A single byte (or a 1-digit nibble in hex) stays one number. A longer
+    odd hex length is rejected so a nibble is not invented on the front.
+    """
+    if not digits:
+        return None
+    if base == 16 and len(digits) == 1:
+        return [int(digits, 16)]
+    if len(digits) <= width:
+        return [int(digits, base)]
+    if len(digits) % width:
+        return None
+    return [
+        int(digits[i : i + width], base) for i in range(0, len(digits), width)
+    ]
+
+
+def _tokenize(chunk: str, preferred: NumberBase) -> list[int] | None:
     chunk = chunk.strip().strip(",")
     if not chunk:
         return None
 
-    # 0xHH / 0bBB / 0oOO
+    # 0xHH / 0bBB / 0oOO — wide 0x payloads become one byte per pair
     if re.fullmatch(r"0[xX][0-9a-fA-F]+", chunk):
-        return int(chunk, 16)
+        return _split_wide(chunk[2:], 16, 2)
     if re.fullmatch(r"0[bB][01]+", chunk):
-        return int(chunk, 2)
+        return _split_wide(chunk[2:], 2, 8)
     if re.fullmatch(r"0[oO][0-7]+", chunk):
-        return int(chunk, 8)
+        return [int(chunk, 8)]
 
     # \xHH (single token)
     m = re.fullmatch(r"\\x([0-9a-fA-F]{2})", chunk, re.I)
     if m:
-        return int(m.group(1), 16)
+        return [int(m.group(1), 16)]
 
     # Forced base
     if preferred == "hex":
-        cleaned = chunk.replace("0x", "").replace("0X", "")
+        cleaned = re.sub(r"^0[xX]", "", chunk)
         if re.fullmatch(r"[0-9a-fA-F]+", cleaned):
-            return int(cleaned, 16)
+            return _split_wide(cleaned, 16, 2)
         return None
     if preferred == "bin":
-        cleaned = chunk.replace("0b", "").replace("0B", "")
+        cleaned = re.sub(r"^0[bB]", "", chunk)
         if re.fullmatch(r"[01]+", cleaned):
-            return int(cleaned, 2)
+            return _split_wide(cleaned, 2, 8)
         return None
     if preferred == "oct":
-        cleaned = chunk.replace("0o", "").replace("0O", "")
+        cleaned = re.sub(r"^0[oO]", "", chunk)
         if re.fullmatch(r"[0-7]+", cleaned):
-            return int(cleaned, 8)
+            return [int(cleaned, 8)]
         return None
     if preferred == "dec":
         if re.fullmatch(r"-?\d+", chunk):
-            return int(chunk, 10)
+            return [int(chunk, 10)]
         return None
 
-    # auto: decimal first, then hex if pure hex letters
+    # auto: decimal first, then hex if the token actually has a–f
     if re.fullmatch(r"-?\d+", chunk):
-        return int(chunk, 10)
+        return [int(chunk, 10)]
     if re.fullmatch(r"[0-9a-fA-F]+", chunk) and re.search(r"[a-fA-F]", chunk):
-        return int(chunk, 16)
+        return _split_wide(chunk, 16, 2)
     return None
 
 
@@ -134,6 +155,10 @@ def parse_number_list(
     cleaned = strip_assignment_and_comments(text)
     if not cleaned:
         return [], None
+
+    dumped = _parse_hexdump(cleaned)
+    if dumped is not None:
+        return list(dumped), None
 
     # Collapsed \\xHH\\xHH streams
     if re.search(r"\\x[0-9a-fA-F]{2}", cleaned, re.I):
@@ -161,11 +186,11 @@ def parse_number_list(
         part = part.strip("[](){}")
         if not part:
             continue
-        val = _tokenize(part, base)
-        if val is None:
+        vals = _tokenize(part, base)
+        if vals is None:
             bad.append(part)
         else:
-            numbers.append(val)
+            numbers.extend(vals)
 
     if bad and not numbers:
         return [], f"Could not parse tokens as numbers: {', '.join(bad[:8])}"

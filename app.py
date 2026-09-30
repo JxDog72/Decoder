@@ -18,6 +18,7 @@ if str(ROOT) not in sys.path:
 
 import customtkinter as ctk
 
+from core.chart import lookup as chart_lookup
 from core.converters import Converters
 from core.parsers import detect_list_format, parse_number_list
 
@@ -104,6 +105,7 @@ class TextPane(ctk.CTkFrame):
         *,
         height: int = 160,
         readonly: bool = False,
+        wrap: str = "word",
         **kwargs,
     ):
         super().__init__(master, fg_color="transparent", **kwargs)
@@ -126,7 +128,7 @@ class TextPane(ctk.CTkFrame):
             border_color=COLORS["border"],
             border_width=1,
             corner_radius=8,
-            wrap="word",
+            wrap=wrap,
         )
         self._box.pack(fill="both", expand=True)
         if readonly:
@@ -417,6 +419,8 @@ class AsciiTab(ctk.CTkFrame):
             msg = f"Decoded {len(nums)} values → {len(text)} chars"
             if warn:
                 msg += f"  ·  {warn}"
+            if Converters.last_note:
+                msg += f"  ·  {Converters.last_note}"
             self.status.set(msg, ok=True, fmt=fmt)
         except Exception as e:
             self.status.set(f"Decode error: {e}", ok=False, fmt=fmt)
@@ -439,11 +443,10 @@ class AsciiTab(ctk.CTkFrame):
                 base=self.out_base.get(),
             )
             self.input_pane.set(formatted)
-            self.status.set(
-                f"Encoded {len(source)} chars → {len(nums)} values",
-                ok=True,
-                fmt=self.out_style.get(),
-            )
+            msg = f"Encoded {len(source)} chars → {len(nums)} values"
+            if Converters.last_note:
+                msg += f"  ·  {Converters.last_note}"
+            self.status.set(msg, ok=True, fmt=self.out_style.get())
         except Exception as e:
             self.status.set(f"Encode error: {e}", ok=False)
 
@@ -539,17 +542,37 @@ class BidirectionalTab(ctk.CTkFrame):
 
     def encode(self) -> None:
         try:
-            out = self.to_right(self.left_pane.get(), **self._opts())
+            src = self.left_pane.get()
+            out = self.to_right(src, **self._opts())
             self.right_pane.set(out)
-            self.status.set("Encoded", ok=True)
+            msg = f"Encoded {len(src)} chars"
+            if Converters.last_note:
+                msg += f"  ·  {Converters.last_note}"
+            self.status.set(msg, ok=True)
         except Exception as e:
             self.status.set(f"Error: {e}", ok=False)
 
     def decode(self) -> None:
         try:
-            out = self.to_left(self.right_pane.get(), **self._opts())
-            self.left_pane.set(out)
-            self.status.set("Decoded", ok=True)
+            right = self.right_pane.get()
+            left = self.left_pane.get()
+            if right.strip():
+                src = right
+                target = self.left_pane
+                where = "right box"
+            elif left.strip():
+                src = left
+                target = self.right_pane
+                where = "left box"
+            else:
+                self.status.set("Nothing to decode", ok=False)
+                return
+            out = self.to_left(src, **self._opts())
+            target.set(out)
+            msg = f"Decoded the {where} into {len(out)} chars"
+            if Converters.last_note:
+                msg += f"  ·  {Converters.last_note}"
+            self.status.set(msg, ok=True)
         except Exception as e:
             self.status.set(f"Error: {e}", ok=False)
 
@@ -560,17 +583,70 @@ class BidirectionalTab(ctk.CTkFrame):
 
 
 class CiphersTab(ctk.CTkFrame):
+    """Encode or decode a chosen cipher from either text box."""
+
     def __init__(self, master, status: StatusBar, **kwargs):
         super().__init__(master, fg_color="transparent", **kwargs)
         self.status = status
 
         ctk.CTkLabel(
             self,
-            text="Classic transforms: ROT/Caesar, ROT47, Atbash, reverse, Morse, A1Z26.",
+            text=(
+                "Pick Encode or Decode, then where the text sits (input or output). "
+                "ROT 8 decode of the input pmttw is hello. "
+                "Atbash, ROT47, and reverse are the same both ways."
+            ),
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
+            wraplength=980,
+            justify="left",
             anchor="w",
-        ).pack(fill="x", pady=(0, 10))
+        ).pack(fill="x", pady=(0, 8))
+
+        mode = ctk.CTkFrame(self, fg_color=COLORS["panel"], corner_radius=10)
+        mode.pack(fill="x", pady=(0, 8))
+        minner = ctk.CTkFrame(mode, fg_color="transparent")
+        minner.pack(fill="x", padx=12, pady=8)
+
+        ctk.CTkLabel(
+            minner,
+            text="Direction",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=(0, 8))
+        self.dir_var = ctk.StringVar(value="Decode")
+        ctk.CTkSegmentedButton(
+            minner,
+            values=["Encode", "Decode"],
+            variable=self.dir_var,
+            fg_color=COLORS["btn"],
+            selected_color=COLORS["accent_dim"],
+            selected_hover_color=COLORS["accent"],
+            unselected_color=COLORS["btn"],
+            unselected_hover_color=COLORS["btn_hover"],
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left", padx=(0, 18))
+
+        ctk.CTkLabel(
+            minner,
+            text="Read from",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=(0, 8))
+        self.from_var = ctk.StringVar(value="Input")
+        ctk.CTkSegmentedButton(
+            minner,
+            values=["Input", "Output"],
+            variable=self.from_var,
+            fg_color=COLORS["btn"],
+            selected_color=COLORS["accent_dim"],
+            selected_hover_color=COLORS["accent"],
+            unselected_color=COLORS["btn"],
+            unselected_hover_color=COLORS["btn_hover"],
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left")
 
         body = ctk.CTkFrame(self, fg_color="transparent")
         body.pack(fill="both", expand=True)
@@ -583,24 +659,23 @@ class CiphersTab(ctk.CTkFrame):
         right = ctk.CTkFrame(body, fg_color="transparent")
         right.grid(row=0, column=1, sticky="nsew", padx=(8, 0))
 
-        self.in_pane = TextPane(left, "Input text", height=240)
+        self.in_pane = TextPane(left, "Input", height=220)
         self.in_pane.pack(fill="both", expand=True)
-        self.in_pane.set("uryyb jbeyq")
-        self.out_pane = TextPane(right, "Output", height=240)
+        # "hello" shifted by ROT 8
+        self.in_pane.set("pmttw")
+        self.out_pane = TextPane(right, "Output", height=220)
         self.out_pane.pack(fill="both", expand=True)
 
         controls = ActionRow(self)
         controls.pack(fill="x", pady=(10, 0))
-
         self.rot_var = controls.add_option(
-            "ROT amount",
+            "ROT",
             [str(i) for i in range(1, 26)],
-            "13",
+            "8",
             width=70,
         )
-
-        controls.add_btn("ROT →", self.do_rot, primary=True)
-        controls.add_btn("ROT back", self.do_rot_back)
+        controls.add_btn("Apply ROT", self.do_rot, primary=True)
+        controls.add_btn("All shifts", self.brute_rot)
         controls.add_btn("ROT47", self.do_rot47)
         controls.add_btn("Atbash", self.do_atbash)
         controls.add_btn("Reverse", self.do_rev)
@@ -608,68 +683,98 @@ class CiphersTab(ctk.CTkFrame):
 
         row2 = ActionRow(self)
         row2.pack(fill="x", pady=(8, 0))
-        row2.add_btn("→ Morse", self.to_morse)
-        row2.add_btn("← Morse", self.from_morse)
-        row2.add_btn("→ A1Z26", self.to_a1z26)
-        row2.add_btn("← A1Z26", self.from_a1z26)
+        row2.add_btn("Morse", self.do_morse)
+        row2.add_btn("A1Z26", self.do_a1z26)
         row2.add_btn("Swap", self.swap)
 
         self.do_rot()
 
+    def _ends(self) -> tuple[TextPane, TextPane, str]:
+        if self.from_var.get() == "Output":
+            return self.out_pane, self.in_pane, "output"
+        return self.in_pane, self.out_pane, "input"
+
+    def _run(self, name: str, forward, inverse=None) -> None:
+        src, dst, side = self._ends()
+        decoding = self.dir_var.get() == "Decode"
+        try:
+            if decoding and inverse is not None:
+                result = inverse(src.get())
+            else:
+                result = forward(src.get())
+        except Exception as e:
+            self.status.set(f"{name} error: {e}", ok=False)
+            return
+        dst.set(result)
+        verb = "Decoded" if decoding else "Encoded"
+        hint = " · same operation both ways" if inverse is None else ""
+        self.status.set(f"{verb} {name} from the {side}{hint}", ok=True)
+
     def do_rot(self) -> None:
         n = int(self.rot_var.get())
-        self.out_pane.set(Converters.rot_n(self.in_pane.get(), n))
-        self.status.set(f"ROT{n} applied", ok=True)
+        self._run(
+            f"ROT{n}",
+            lambda text: Converters.rot_n(text, n),
+            lambda text: Converters.rot_n(text, -n),
+        )
 
-    def do_rot_back(self) -> None:
-        n = int(self.rot_var.get())
-        self.out_pane.set(Converters.rot_n(self.in_pane.get(), -n))
-        self.status.set(f"ROT-{n} applied", ok=True)
+    def brute_rot(self) -> None:
+        src, dst, side = self._ends()
+        text = src.get()
+        decoding = self.dir_var.get() == "Decode"
+        lines = []
+        for n in range(1, 26):
+            shifted = Converters.rot_n(text, -n if decoding else n)
+            label = f"undo {n:2d}" if decoding else f"ROT {n:2d}"
+            lines.append(f"{label}  {shifted}")
+        dst.set("\n".join(lines))
+        verb = "Decoded" if decoding else "Encoded"
+        self.status.set(f"{verb} every ROT shift of the {side}", ok=True)
 
     def do_rot47(self) -> None:
-        self.out_pane.set(Converters.rot47(self.in_pane.get()))
-        self.status.set("ROT47 applied (self-inverse)", ok=True)
+        self._run("ROT47", Converters.rot47)
 
     def do_atbash(self) -> None:
-        self.out_pane.set(Converters.atbash(self.in_pane.get()))
-        self.status.set("Atbash applied (self-inverse)", ok=True)
+        self._run("Atbash", Converters.atbash)
 
     def do_rev(self) -> None:
-        self.out_pane.set(Converters.reverse_text(self.in_pane.get()))
-        self.status.set("Reversed characters", ok=True)
+        self._run("reverse", Converters.reverse_text)
 
     def do_rev_words(self) -> None:
-        self.out_pane.set(Converters.reverse_words(self.in_pane.get()))
-        self.status.set("Reversed words", ok=True)
+        self._run("word reverse", Converters.reverse_words)
 
-    def to_morse(self) -> None:
-        self.out_pane.set(Converters.to_morse(self.in_pane.get()))
-        self.status.set("Encoded Morse", ok=True)
+    def do_morse(self) -> None:
+        self._run("Morse", Converters.to_morse, Converters.from_morse)
 
-    def from_morse(self) -> None:
-        src = self.in_pane.get()
-        if not re_looks_morse(src):
-            src = self.out_pane.get()
-        self.out_pane.set(Converters.from_morse(src))
-        self.status.set("Decoded Morse", ok=True)
-
-    def to_a1z26(self) -> None:
-        self.out_pane.set(Converters.a1z26_encode(self.in_pane.get()))
-        self.status.set("A1Z26 encoded", ok=True)
-
-    def from_a1z26(self) -> None:
-        src = self.out_pane.get() if re.search(r"\d", self.out_pane.get()) else self.in_pane.get()
-        self.out_pane.set(Converters.a1z26_decode(src))
-        self.status.set("A1Z26 decoded", ok=True)
+    def do_a1z26(self) -> None:
+        self._run("A1Z26", Converters.a1z26_encode, Converters.a1z26_decode)
 
     def swap(self) -> None:
         a, b = self.in_pane.get(), self.out_pane.get()
         self.in_pane.set(b)
         self.out_pane.set(a)
+        current = self.from_var.get()
+        self.from_var.set("Input" if current == "Output" else "Output")
+        self.status.set("Swapped panes", ok=True)
 
 
 def re_looks_morse(s: str) -> bool:
     return bool(s) and all(c in ".-/ \t\n" for c in s)
+
+
+def _looks_like_hex(raw: str) -> bool:
+    if re.search(r"\\x[0-9a-fA-F]{2}", raw) or re.search(r"0[xX][0-9a-fA-F]{2}", raw):
+        return True
+    stripped = re.sub(r"0[xX](?=[0-9a-fA-F])", "", raw)
+    digits = re.sub(r"[^0-9a-fA-F]", "", stripped)
+    return len(digits) >= 4 and len(digits) % 2 == 0
+
+
+def _looks_like_binary(raw: str) -> bool:
+    body = re.sub(r"0[bB](?=[01])", "", raw)
+    if any(c not in "01 \t\n\r,|" for c in body):
+        return False
+    return len(re.sub(r"[^01]", "", body)) >= 8
 
 
 class CryptoTab(ctk.CTkFrame):
@@ -682,8 +787,10 @@ class CryptoTab(ctk.CTkFrame):
         ctk.CTkLabel(
             self,
             text=(
-                "Keyed ciphers: Vigenère, XOR (text or hex key), Rail Fence. "
-                "Fine for puzzles and learning — not for real secrets."
+                "Keyed ciphers for puzzles and learning — not for real secrets. "
+                "Encrypt writes the ciphertext on the right. "
+                "Decrypt reads whichever box you pick under Ciphertext in, "
+                "and writes the plaintext into the other box."
             ),
             text_color=COLORS["muted"],
             font=ctk.CTkFont(size=12),
@@ -800,8 +907,28 @@ class CryptoTab(ctk.CTkFrame):
         row = ActionRow(self)
         row.pack(fill="x", pady=(12, 0))
         row.add_btn("Encrypt →", self.encrypt, primary=True)
-        row.add_btn("← Decrypt", self.decrypt)
+        row.add_btn("Decrypt", self.decrypt)
         row.add_btn("Swap", self.swap)
+
+        ctk.CTkLabel(
+            row,
+            text="Ciphertext in",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=(8, 8))
+        self.cipher_from = ctk.StringVar(value="Input")
+        ctk.CTkSegmentedButton(
+            row,
+            values=["Input", "Output"],
+            variable=self.cipher_from,
+            fg_color=COLORS["btn"],
+            selected_color=COLORS["accent_dim"],
+            selected_hover_color=COLORS["accent"],
+            unselected_color=COLORS["btn"],
+            unselected_hover_color=COLORS["btn_hover"],
+            text_color=COLORS["text"],
+            font=ctk.CTkFont(size=12),
+        ).pack(side="left")
 
         self._sync_options()
 
@@ -837,19 +964,29 @@ class CryptoTab(ctk.CTkFrame):
             else:
                 out = Converters.rail_fence_encrypt(text, int(self.rails_var.get()))
             self.out_pane.set(out)
-            self.status.set(f"{mode} encrypted", ok=True)
+            self.cipher_from.set("Output")
+            self.status.set(f"{mode} encrypted into the output", ok=True)
         except Exception as e:
             self.status.set(f"Encrypt error: {e}", ok=False)
+
+    def _cipher_source(self) -> tuple[str, TextPane, str]:
+        """Return ciphertext, the pane that should receive plaintext, and a label."""
+        if self.cipher_from.get() == "Output" and self.out_pane.get().strip():
+            return self.out_pane.get(), self.in_pane, "output"
+        if self.cipher_from.get() == "Input" and self.in_pane.get().strip():
+            return self.in_pane.get(), self.out_pane, "input"
+        if self.out_pane.get().strip():
+            return self.out_pane.get(), self.in_pane, "output"
+        return self.in_pane.get(), self.out_pane, "input"
 
     def decrypt(self) -> None:
         try:
             mode = self.cipher_var.get()
-            cipher = self.out_pane.get() or self.in_pane.get()
+            cipher, target, side = self._cipher_source()
             key = self.key_entry.get()
             if mode == "Vigenère":
                 plain = Converters.vigenere(cipher, key, decrypt=True)
             elif mode == "XOR":
-                # if output was hex/b64, treat ciphertext format accordingly
                 fmt = self.xor_out.get()
                 if fmt == "text":
                     plain = Converters.xor_crypt(
@@ -864,8 +1001,8 @@ class CryptoTab(ctk.CTkFrame):
                     )
             else:
                 plain = Converters.rail_fence_decrypt(cipher, int(self.rails_var.get()))
-            self.in_pane.set(plain)
-            self.status.set(f"{mode} decrypted", ok=True)
+            target.set(plain)
+            self.status.set(f"{mode} decrypted from the {side}", ok=True)
         except Exception as e:
             self.status.set(f"Decrypt error: {e}", ok=False)
 
@@ -873,6 +1010,8 @@ class CryptoTab(ctk.CTkFrame):
         a, b = self.in_pane.get(), self.out_pane.get()
         self.in_pane.set(b)
         self.out_pane.set(a)
+        current = self.cipher_from.get()
+        self.cipher_from.set("Input" if current == "Output" else "Output")
 
 
 class UnicodeTab(ctk.CTkFrame):
@@ -1384,8 +1523,10 @@ class MultiTab(ctk.CTkFrame):
         attempt("Base32", lambda: Converters.b32_decode(raw))
         attempt("Base85", lambda: Converters.b85_decode(raw))
         attempt("Ascii85", lambda: Converters.a85_decode(raw))
-        attempt("Hex → text", lambda: Converters.hex_to_text(raw))
-        attempt("Binary → text", lambda: Converters.binary_to_text(raw))
+        if _looks_like_hex(raw):
+            attempt("Hex → text", lambda: Converters.hex_to_text(raw))
+        if _looks_like_binary(raw):
+            attempt("Binary → text", lambda: Converters.binary_to_text(raw))
         attempt("URL decode", lambda: Converters.url_decode(raw))
         attempt("HTML unescape", lambda: Converters.html_decode(raw))
         attempt("ROT13", lambda: Converters.rot_n(raw, 13))
@@ -1415,12 +1556,77 @@ class MultiTab(ctk.CTkFrame):
 # ══════════════════════════════════════════════════════════════════════
 
 
+class AsciiChartTab(ctk.CTkFrame):
+    """Searchable byte chart: decimal, hex, octal, binary, escape, glyph."""
+
+    def __init__(self, master, status: StatusBar, **kwargs):
+        super().__init__(master, fg_color="transparent", **kwargs)
+        self.status = status
+
+        ctk.CTkLabel(
+            self,
+            text=(
+                "Look up a character, a decimal (65), hex (0x41 or 41), "
+                "binary (0b01000001), or a name (space, tab, newline). "
+                "An all-digit query shows both the decimal and the hex reading."
+            ),
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12),
+            wraplength=980,
+            justify="left",
+            anchor="w",
+        ).pack(fill="x", pady=(0, 8))
+
+        bar = ctk.CTkFrame(self, fg_color="transparent")
+        bar.pack(fill="x", pady=(0, 8))
+        ctk.CTkLabel(
+            bar,
+            text="Lookup",
+            text_color=COLORS["muted"],
+            font=ctk.CTkFont(size=12, weight="bold"),
+        ).pack(side="left", padx=(0, 8))
+        self.query = ctk.CTkEntry(
+            bar,
+            height=32,
+            fg_color=COLORS["input_bg"],
+            border_color=COLORS["border"],
+            text_color=COLORS["text"],
+            placeholder_text="A   65   0x41   0b01000001   newline",
+            font=font_mono(size=13),
+        )
+        self.query.pack(side="left", fill="x", expand=True, padx=(0, 12))
+        self.query.bind("<KeyRelease>", lambda _e: self.refresh())
+        self.query.bind("<Return>", lambda _e: self.refresh())
+
+        self.full_range = ctk.BooleanVar(value=False)
+        ctk.CTkCheckBox(
+            bar,
+            text="Show all 0–255",
+            variable=self.full_range,
+            text_color=COLORS["muted"],
+            fg_color=COLORS["accent"],
+            hover_color=COLORS["accent_dim"],
+            font=ctk.CTkFont(size=12),
+            command=self.refresh,
+        ).pack(side="left")
+
+        self.pane = TextPane(self, "Decimal · hex · octal · binary · escape · character", height=420, readonly=True, wrap="none")
+        self.pane.pack(fill="both", expand=True)
+        self.refresh()
+
+    def refresh(self) -> None:
+        text = chart_lookup(self.query.get(), full_range=self.full_range.get())
+        self.pane.set(text)
+        shown = max(text.count("\n") - 1, 0)
+        self.status.set(f"ASCII chart · {shown} rows", ok=True, fmt="reference")
+
+
 class DecoderApp(ctk.CTk):
     def __init__(self):
         super().__init__()
         self.title("Decoder")
-        self.geometry("1100x720")
-        self.minsize(900, 600)
+        self.geometry("1180x760")
+        self.minsize(960, 640)
         self.configure(fg_color=COLORS["bg"])
 
         try:
@@ -1445,7 +1651,7 @@ class DecoderApp(ctk.CTk):
         ).pack(anchor="w")
         ctk.CTkLabel(
             title_wrap,
-            text="ASCII · Base · Hex · Crypto · Ciphers · Hash Check · Try All",
+            text="ASCII · Base · Hex · Ciphers · Crypto · Hash · Chart",
             text_color=COLORS["muted"],
             font=font_ui(size=11),
             anchor="w",
@@ -1478,6 +1684,7 @@ class DecoderApp(ctk.CTk):
         tab_hash = self.tabs.add("Hash Check")
         tab_uni = self.tabs.add("Unicode")
         tab_multi = self.tabs.add("Try All")
+        tab_chart = self.tabs.add("ASCII Chart")
 
         all_tabs = (
             tab_ascii,
@@ -1489,6 +1696,7 @@ class DecoderApp(ctk.CTk):
             tab_hash,
             tab_uni,
             tab_multi,
+            tab_chart,
         )
         for t in all_tabs:
             t.configure(fg_color=COLORS["bg"])
@@ -1543,20 +1751,26 @@ class DecoderApp(ctk.CTk):
         BidirectionalTab(
             tab_hex,
             self.status,
-            title="Hex and binary byte representations of text.",
+            title=(
+                "Hex and binary. 0x prefixes and hex dumps keep their real bytes. "
+                "An odd nibble is reported instead of padding an extra character. "
+                "Decode reads the right box, or the left box when the right one is empty."
+            ),
             left_label="Plain text",
             right_label="Hex / Binary output",
-            to_right=lambda t, mode="hex", **k: (
-                Converters.text_to_hex(t)
-                if mode == "hex"
-                else Converters.text_to_binary(t)
+            to_right=lambda t, mode="hex", encoding="utf-8", **k: (
+                Converters.text_to_binary(t, encoding=encoding)
                 if mode == "binary"
-                else Converters.text_to_hex(t, sep="")
+                else Converters.text_to_hex(
+                    t,
+                    sep="" if mode == "hex compact" else " ",
+                    encoding=encoding,
+                )
             ),
-            to_left=lambda t, mode="hex", **k: (
-                Converters.hex_to_text(t)
-                if mode in ("hex", "hex compact")
-                else Converters.binary_to_text(t)
+            to_left=lambda t, mode="hex", encoding="utf-8", **k: (
+                Converters.binary_to_text(t, encoding=encoding)
+                if mode == "binary"
+                else Converters.hex_to_text(t, encoding=encoding)
             ),
             sample_left="Hello Decoder",
             extra_controls=lambda row: {
@@ -1565,7 +1779,13 @@ class DecoderApp(ctk.CTk):
                     ["hex", "hex compact", "binary"],
                     "hex",
                     width=120,
-                )
+                ),
+                "encoding": row.add_option(
+                    "Bytes",
+                    ["utf-8", "latin-1", "ascii"],
+                    "utf-8",
+                    width=90,
+                ),
             },
         ).pack(fill="both", expand=True, padx=4, pady=4)
 
@@ -1601,6 +1821,7 @@ class DecoderApp(ctk.CTk):
         HashCheckTab(tab_hash, self.status).pack(fill="both", expand=True, padx=4, pady=4)
         UnicodeTab(tab_uni, self.status).pack(fill="both", expand=True, padx=4, pady=4)
         MultiTab(tab_multi, self.status).pack(fill="both", expand=True, padx=4, pady=4)
+        AsciiChartTab(tab_chart, self.status).pack(fill="both", expand=True, padx=4, pady=4)
 
         self.protocol("WM_DELETE_WINDOW", self.destroy)
         self.status.set("Ready", ok=True)
