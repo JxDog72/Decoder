@@ -111,7 +111,7 @@ Large files are read in chunks so they do not need to fit in RAM. Green **MATCH*
 
 **Crack** builds the John and Hashcat line. **Run** works only when that tool is on PATH. On Windows, `john` and `hashcat` are usually missing until you install them. Copy the command and paste it into Kali. Put one hash on each line before you run John. `best64` is the rule when a word is close but the case or a digit is off. A known prefix plus four digits is a mask: `PREFIX?d?d?d?d`.
 
-**Wordlists** searches this computer. On Linux it checks `/usr/share/wordlists/rockyou.txt`, John’s `password.lst`, and SecLists `Passwords`, the same idea as HTB Helper. A `.gz` next to a missing `rockyou.txt` gets a `gzip -dk` command you copy. The app does not download or unpack lists. On Windows those Kali paths are not there. Put a list in `Decoder\wordlists` or browse to one. The menu selection is what Crack uses.
+**Wordlists** searches this computer. On Linux it checks `/usr/share/wordlists/rockyou.txt`, John’s `password.lst`, and SecLists `Passwords`, the same idea as HTB Helper. On Windows those paths are not there. Put a list in `Decoder\wordlists` or browse to one. The menu selection is what Crack uses.
 
 ---
 

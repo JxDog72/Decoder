@@ -20,10 +20,6 @@ READY_NAMES = (
     "/usr/share/seclists/Passwords/Leaked-Databases/rockyou-75.txt",
 )
 
-GZIP_NAMES = (
-    "/usr/share/wordlists/rockyou.txt.gz",
-)
-
 SCAN_DIRS = (
     "/usr/share/wordlists",
     "/usr/share/john",
@@ -38,7 +34,7 @@ TEXT_SUFFIXES = {".txt", ".lst", ".dic"}
 @dataclass(frozen=True)
 class WordlistHit:
     path: str
-    kind: str  # "ready" or "gzip"
+    kind: str  # "ready"
     note: str
 
 
@@ -80,12 +76,10 @@ def locate_wordlists(
     *,
     app_dir: Path | None = None,
     named: tuple[str, ...] | None = None,
-    gzip_names: tuple[str, ...] | None = None,
     scan_dirs: list[Path] | None = None,
 ) -> list[WordlistHit]:
-    """Return ready lists first, then a compressed rockyou if that is all that exists."""
+    """Return wordlists that are already uncompressed files on this machine."""
     ready: list[str] = []
-    gzipped: list[str] = []
     seen: set[str] = set()
 
     def add(path: Path, bucket: list[str]) -> None:
@@ -143,20 +137,4 @@ def locate_wordlists(
             break
         add(Path(item), ready)
 
-    hits = [WordlistHit(path, "ready", "ready to pass as a wordlist") for path in ready]
-
-    txt_names = {Path(path).name.lower() for path in ready}
-    for item in gzip_names if gzip_names is not None else GZIP_NAMES:
-        path = Path(item)
-        if path.name.lower().removesuffix(".gz") in txt_names:
-            continue
-        add(path, gzipped)
-    for path in gzipped:
-        hits.append(
-            WordlistHit(
-                path,
-                "gzip",
-                "compressed. Copy this, then run it yourself: gzip -dk " + path,
-            )
-        )
-    return hits
+    return [WordlistHit(path, "ready", "ready to pass as a wordlist") for path in ready]

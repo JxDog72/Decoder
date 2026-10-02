@@ -87,9 +87,9 @@ def mount_ctf_tabs(status, file_tab, crack_tab, list_tab) -> None:
     CrackTab(
         crack_tab, status, wordlist, TextPane, ActionRow, copy_to_clipboard, font_ui, COLORS
     ).pack(fill="both", expand=True, padx=4, pady=4)
-    WordlistTab(
-        list_tab, status, wordlist, TextPane, ActionRow, copy_to_clipboard, font_ui, COLORS
-    ).pack(fill="both", expand=True, padx=4, pady=4)
+    WordlistTab(list_tab, status, wordlist, TextPane, ActionRow, font_ui, COLORS).pack(
+        fill="both", expand=True, padx=4, pady=4
+    )
 
 
 class FileIdTab(ctk.CTkFrame):
@@ -436,11 +436,10 @@ class CrackTab(ctk.CTkFrame):
 
 
 class WordlistTab(ctk.CTkFrame):
-    def __init__(self, master, status, wordlist, TextPane, ActionRow, copy_to_clipboard, font_ui, colors, **kwargs):
+    def __init__(self, master, status, wordlist, TextPane, ActionRow, font_ui, colors, **kwargs):
         super().__init__(master, fg_color=colors["bg"], **kwargs)
         self.status = status
         self.wordlist = wordlist
-        self.copy_to_clipboard = copy_to_clipboard
         self._hits = []
 
         ctk.CTkLabel(
@@ -457,7 +456,6 @@ class WordlistTab(ctk.CTkFrame):
         row.pack(fill="x", pady=(0, 6))
         row.add_btn("Rescan", self.rescan, primary=True)
         row.add_btn("Browse to a list…", self.browse)
-        row.add_btn("Copy gzip command", self.copy_gzip)
         self.menu = ctk.CTkOptionMenu(
             row,
             variable=wordlist,
@@ -488,8 +486,7 @@ class WordlistTab(ctk.CTkFrame):
         lines = [platform_note(), ""]
         if not self._hits:
             lines.append("No wordlist file was found.")
-            lines.append("On Kali, rockyou lives at /usr/share/wordlists/rockyou.txt")
-            lines.append("If you only have rockyou.txt.gz: gzip -dk /usr/share/wordlists/rockyou.txt.gz")
+            lines.append("On Parrot or Kali, rockyou.txt is usually /usr/share/wordlists/rockyou.txt")
             lines.append("John also ships a short password.lst next to the program.")
             lines.append(r"On Windows, put a list in Decoder\wordlists or browse to one.")
         else:
@@ -515,12 +512,3 @@ class WordlistTab(ctk.CTkFrame):
         self.menu.configure(values=values)
         self.wordlist.set(path)
         self.status.set("Wordlist selected", ok=True, fmt=Path(path).name)
-
-    def copy_gzip(self) -> None:
-        for hit in self._hits:
-            if hit.kind == "gzip":
-                command = "gzip -dk " + hit.path
-                self.copy_to_clipboard(self, command)
-                self.status.set("gzip command copied", ok=True)
-                return
-        self.status.set("No compressed rockyou was found.", ok=False)

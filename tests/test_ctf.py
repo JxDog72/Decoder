@@ -109,23 +109,15 @@ class CrackTests(unittest.TestCase):
 
 
 class WordlistTests(unittest.TestCase):
-    def test_scan_finds_a_local_list_and_reports_gzip(self):
+    def test_scan_finds_a_local_list(self):
         with tempfile.TemporaryDirectory() as folder:
             root = Path(folder)
             ready = root / "lists"
             ready.mkdir()
-            (ready / "common.txt").write_text("secret\n", encoding="utf-8")
-            gz = root / "rockyou.txt.gz"
-            gz.write_bytes(b"not-a-real-gzip")
-            hits = locate_wordlists(
-                named=(),
-                gzip_names=(str(gz),),
-                scan_dirs=[ready],
-            )
-        kinds = {hit.kind for hit in hits}
-        self.assertIn("ready", kinds)
-        self.assertIn("gzip", kinds)
-        self.assertTrue(any(hit.path.endswith("common.txt") for hit in hits))
+            (ready / "rockyou.txt").write_text("secret\n", encoding="utf-8")
+            hits = locate_wordlists(named=(), scan_dirs=[ready])
+        self.assertTrue(any(hit.path.endswith("rockyou.txt") for hit in hits))
+        self.assertTrue(all(hit.kind == "ready" for hit in hits))
 
     def test_missing_file_command_is_explicit(self):
         status = probe(["file-that-is-not-real"], "install note", which=lambda _name: None)
