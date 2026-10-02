@@ -45,6 +45,15 @@ class HexBinaryTests(unittest.TestCase):
         with self.assertRaises(ValueError):
             parse_binary_bytes("11010001100101")
 
+    def test_binary_to_base64_and_back(self):
+        # 'Hi' is 01001000 01101001
+        self.assertEqual(Converters.binary_to_base64("01001000 01101001"), "SGk=")
+        self.assertEqual(Converters.binary_to_base64("0b0100100001101001"), "SGk=")
+        self.assertEqual(
+            Converters.base64_to_binary("SGk="),
+            "01001000 01101001",
+        )
+
     def test_xor_hex_key_keeps_a_single_byte(self):
         # 0x41 used to become 0x00 0x41 because the 0 in 0x survived
         out = Converters.xor_crypt("A", "0x41", key_is_hex=True, output="hex")

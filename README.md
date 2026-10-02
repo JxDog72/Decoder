@@ -45,7 +45,7 @@ Or: `python3 -m pip install -r requirements.txt && python3 app.py`
 |-----|----------------|
 | **ASCII Lists** | Number lists ↔ text (brackets, commas, hex, Python-style lists) |
 | **Base / Encodings** | Base64, URL-safe Base64, Base32, Base85, Ascii85 |
-| **Hex / Binary** | Text ↔ hex ↔ binary |
+| **Hex / Binary** | Text ↔ hex ↔ binary, and binary digits → Base64 |
 | **URL / HTML** | URL encoding and HTML entities |
 | **Ciphers** | ROT/Caesar, ROT47, Atbash, reverse, Morse, A1Z26. Encode or decode, from the input or the output |
 | **Crypto** | Vigenère, XOR, Rail Fence (puzzles / learning only). Decrypt reads the box you pick |
@@ -53,6 +53,9 @@ Or: `python3 -m pip install -r requirements.txt && python3 app.py`
 | **Unicode** | Code points and a short byte summary |
 | **Try All** | One paste, several decoders at once |
 | **ASCII Chart** | Decimal, hex, octal, binary, and the character, with a lookup box |
+| **File ID** | What a file really is: headers, a base64 peel, EBCDIC, Windows logs and hives |
+| **Crack** | Build John and Hashcat commands. Run them only when that tool is installed |
+| **Wordlists** | Find lists already on this machine. On Linux that includes the Kali paths |
 
 ---
 
@@ -71,6 +74,8 @@ On **Crypto**, **Decrypt** uses the box selected under **Ciphertext in**. After 
 ## Hex and binary
 
 `0x48` is the byte `48`. The leading zero from the prefix is not kept, and an odd leftover nibble is reported instead of being padded into an extra character. A pasted hex dump skips the address column. Bytes that are not valid UTF-8 stay as latin-1, so a bad byte is not replaced with a new character. The **Bytes** menu can force latin-1 or ASCII.
+
+**binary → base64** reads bits in the left box (`01001000 01101001` or one long bit string) and writes Base64 on the right. Decode turns that Base64 back into spaced bytes. `01001000 01101001` is `SGk=`.
 
 Every text box has **Paste / Copy / Clear**, plus a right-click menu.
 
@@ -97,6 +102,16 @@ If you paste them in the wrong boxes, Verify still figures it out.
 3. **Verify hash**
 
 Large files are read in chunks so they do not need to fit in RAM. Green **MATCH** / red **NO MATCH**.
+
+---
+
+## CTF tabs
+
+**File ID** names a file from its header. A trailing `=` often means base64: peel that layer, then look again. Repeating byte `40` in the hex dump is the EBCDIC space. **Save CP037 text** is the Windows-side stand-in for `dd conv=ascii`. An XMI needs `extractxmi` from `pip install xmi-reader` inside a virtual environment. If that command is missing, the tab says it is not installed and still shows the install line.
+
+**Crack** builds the John and Hashcat line. **Run** works only when that tool is on PATH. On Windows, `john` and `hashcat` are usually missing until you install them. Copy the command and paste it into Kali. Put one hash on each line before you run John. `best64` is the rule when a word is close but the case or a digit is off. A known prefix plus four digits is a mask: `PREFIX?d?d?d?d`.
+
+**Wordlists** searches this computer. On Linux it checks `/usr/share/wordlists/rockyou.txt`, John’s `password.lst`, and SecLists `Passwords`, the same idea as HTB Helper. A `.gz` next to a missing `rockyou.txt` gets a `gzip -dk` command you copy. The app does not download or unpack lists. On Windows those Kali paths are not there. Put a list in `Decoder\wordlists` or browse to one. The menu selection is what Crack uses.
 
 ---
 

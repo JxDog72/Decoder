@@ -255,6 +255,22 @@ class Converters:
         return text
 
     @staticmethod
+    def binary_to_base64(bin_str: str) -> str:
+        """Encode binary digits as the Base64 of those bytes."""
+        raw = parse_binary_bytes(bin_str)
+        Converters.last_note = f"{len(raw)} byte{'s' if len(raw) != 1 else ''} from binary"
+        return base64.b64encode(raw).decode("ascii")
+
+    @staticmethod
+    def base64_to_binary(text: str) -> str:
+        """Decode Base64 and show the bytes as spaced 8-bit groups."""
+        compact = re.sub(r"\s+", "", text.strip())
+        pad = (-len(compact)) % 4
+        raw = base64.b64decode(compact + ("=" * pad), validate=False)
+        Converters.last_note = f"{len(raw)} byte{'s' if len(raw) != 1 else ''} from Base64"
+        return " ".join(f"{byte:08b}" for byte in raw)
+
+    @staticmethod
     def _encode_text(text: str, encoding: str) -> bytes:
         try:
             return text.encode(encoding)

@@ -1718,7 +1718,7 @@ class DecoderApp(ctk.CTk):
         ).pack(anchor="w")
         ctk.CTkLabel(
             title_wrap,
-            text="ASCII · Base · Hex · Ciphers · Crypto · Hash · Chart",
+            text="ASCII · Base · Hex · Ciphers · Hash · File ID · Crack",
             text_color=COLORS["muted"],
             font=font_ui(size=11),
             anchor="w",
@@ -1749,6 +1749,9 @@ class DecoderApp(ctk.CTk):
         tab_cipher = self.tabs.add("Ciphers")
         tab_crypto = self.tabs.add("Crypto")
         tab_hash = self.tabs.add("Hash Check")
+        tab_file = self.tabs.add("File ID")
+        tab_crack = self.tabs.add("Crack")
+        tab_lists = self.tabs.add("Wordlists")
         tab_uni = self.tabs.add("Unicode")
         tab_multi = self.tabs.add("Try All")
         tab_chart = self.tabs.add("ASCII Chart")
@@ -1761,6 +1764,9 @@ class DecoderApp(ctk.CTk):
             tab_cipher,
             tab_crypto,
             tab_hash,
+            tab_file,
+            tab_crack,
+            tab_lists,
             tab_uni,
             tab_multi,
             tab_chart,
@@ -1821,12 +1827,15 @@ class DecoderApp(ctk.CTk):
             title=(
                 "Hex and binary. 0x prefixes and hex dumps keep their real bytes. "
                 "An odd nibble is reported instead of padding an extra character. "
+                "binary → base64 reads bits on the left and writes Base64 on the right. "
                 "Decode reads the right box, or the left box when the right one is empty."
             ),
-            left_label="Plain text",
-            right_label="Hex / Binary output",
+            left_label="Plain text  ·  or bits for binary → base64",
+            right_label="Hex / Binary / Base64 output",
             to_right=lambda t, mode="hex", encoding="utf-8", **k: (
-                Converters.text_to_binary(t, encoding=encoding)
+                Converters.binary_to_base64(t)
+                if mode == "binary to base64"
+                else Converters.text_to_binary(t, encoding=encoding)
                 if mode == "binary"
                 else Converters.text_to_hex(
                     t,
@@ -1835,7 +1844,9 @@ class DecoderApp(ctk.CTk):
                 )
             ),
             to_left=lambda t, mode="hex", encoding="utf-8", **k: (
-                Converters.binary_to_text(t, encoding=encoding)
+                Converters.base64_to_binary(t)
+                if mode == "binary to base64"
+                else Converters.binary_to_text(t, encoding=encoding)
                 if mode == "binary"
                 else Converters.hex_to_text(t, encoding=encoding)
             ),
@@ -1843,9 +1854,9 @@ class DecoderApp(ctk.CTk):
             extra_controls=lambda row: {
                 "mode": row.add_option(
                     "Format",
-                    ["hex", "hex compact", "binary"],
+                    ["hex", "hex compact", "binary", "binary to base64"],
                     "hex",
-                    width=120,
+                    width=150,
                 ),
                 "encoding": row.add_option(
                     "Bytes",
@@ -1886,6 +1897,9 @@ class DecoderApp(ctk.CTk):
         CiphersTab(tab_cipher, self.status).pack(fill="both", expand=True, padx=4, pady=4)
         CryptoTab(tab_crypto, self.status).pack(fill="both", expand=True, padx=4, pady=4)
         HashCheckTab(tab_hash, self.status).pack(fill="both", expand=True, padx=4, pady=4)
+        from ctf_ui import mount_ctf_tabs
+
+        mount_ctf_tabs(self.status, tab_file, tab_crack, tab_lists)
         UnicodeTab(tab_uni, self.status).pack(fill="both", expand=True, padx=4, pady=4)
         MultiTab(tab_multi, self.status).pack(fill="both", expand=True, padx=4, pady=4)
         AsciiChartTab(tab_chart, self.status).pack(fill="both", expand=True, padx=4, pady=4)
